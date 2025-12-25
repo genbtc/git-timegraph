@@ -1,0 +1,32 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS commits (
+    oid TEXT PRIMARY KEY,
+    committer_time INTEGER NOT NULL,
+    author_time INTEGER NOT NULL,
+    parent_oids TEXT NOT NULL,
+    tree_oid TEXT NOT NULL,
+    message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS paths (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS path_events (
+    path_id INTEGER NOT NULL,
+    commit_oid TEXT NOT NULL,
+    commit_time INTEGER NOT NULL,
+    old_blob TEXT,
+    new_blob TEXT,
+    change_type TEXT NOT NULL,
+    FOREIGN KEY(path_id) REFERENCES paths(id),
+    FOREIGN KEY(commit_oid) REFERENCES commits(oid),
+    PRIMARY KEY (path_id, commit_oid)
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
