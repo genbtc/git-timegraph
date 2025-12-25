@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 
-# git-timegraph Writer
-# Materializes files from the database into a directory
-# Sets mtime according to reducer timestamps
-# Does not handle rename events yet
+# git-timegraph Writer (v2)
+# Materializes files from database with pre-flight conflict detection
+# Detects file/directory conflicts before attempting writes
 
 import sqlite3
 import os
 import subprocess
 from pathlib import Path
-from datetime import datetime
+from collections import defaultdict
 
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = BASE_DIR / "timegraph.sqlite"
 OUTPUT_DIR = BASE_DIR / "checkout"
+REPO_DIR = BASE_DIR / "path_to_repo"  # adjust or pass as argument
 
 
 def get_latest_blobs(db):
@@ -34,17 +34,48 @@ def get_latest_blobs(db):
     return path_info
 
 
-def materialize_files(db, output_dir):
+def build_intermediate_tree(paths):
+    """Build a tree representation of all paths, detecting file/dir conflicts"""
+    tree = {}
+    conflicts = set()
+
+    for path in paths:
+        parts = path.split('/')
+        node = tree
+        for i, part in enumerate(parts):
+            if i == len(parts) - 1:
+                if part in node and isinstance(node[part], dict):
+                    conflicts.add(path)
+                node[part] = 'file'
+            else:
+                if part in node and node[part] == 'file':
+                    conflicts.add('/'.join(parts[:i+1]))
+                    node[part] = {}
+                elif part not in node:
+                    node[part] = {}
+                node = node[part]
+
+    return tree, conflicts
+
+
+def materialize_files(db, output_dir, repo_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     path_info = get_latest_blobs(db)
+
+    tree, conflicts = build_intermediate_tree(path_info.keys())
+    if conflicts:
+        print("Detected file/directory conflicts:")
+        for c in conflicts:
+            print(f"  {c}")
+        print("Resolve conflicts manually or adjust paths.")
+        return
 
     for path, info in path_info.items():
         blob_sha = info['blob']
         mtime = info['mtime']
 
-        # Read blob content from git
-        content = subprocess.check_output(['git', 'cat-file', '-p', blob_sha])
+        content = subprocess.check_output(['git', 'cat-file', '-p', blob_sha], cwd=repo_dir)
 
         target_path = output_dir / path
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,15 +83,12 @@ def materialize_files(db, output_dir):
         with open(target_path, 'wb') as f:
             f.write(content)
 
-        # Set mtime
         os.utime(target_path, times=(mtime, mtime))
 
 
 def main():
-    import subprocess
-
     db = sqlite3.connect(DB_PATH)
-    materialize_files(db, OUTPUT_DIR)
+    materialize_files(db, OUTPUT_DIR, REPO_DIR)
     db.close()
 
     print(f"Files materialized in {OUTPUT_DIR}")
@@ -68,3 +96,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
