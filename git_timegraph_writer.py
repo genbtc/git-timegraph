@@ -9,11 +9,11 @@ import os
 import subprocess
 from pathlib import Path
 from collections import defaultdict
+import sys
 
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = BASE_DIR / "timegraph.sqlite"
 OUTPUT_DIR = BASE_DIR / "checkout"
-REPO_DIR = BASE_DIR / "path_to_repo"  # adjust or pass as argument
 
 
 def get_latest_blobs(db):
@@ -87,8 +87,14 @@ def materialize_files(db, output_dir, repo_dir):
 
 
 def main():
+    if len(sys.argv) != 2:
+        print("usage: git-timegraph-writer <repo_dir>")
+        sys.exit(1)
+
+    repo_dir = Path(sys.argv[1]).resolve()
+
     db = sqlite3.connect(DB_PATH)
-    materialize_files(db, OUTPUT_DIR, REPO_DIR)
+    materialize_files(db, OUTPUT_DIR, repo_dir)
     db.close()
 
     print(f"Files materialized in {OUTPUT_DIR}")
