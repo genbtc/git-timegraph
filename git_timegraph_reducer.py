@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 # git_timegraph_reducer.py - Computes final per-path state from path_events
 """
 Enhancements applied:
@@ -9,6 +10,7 @@ Enhancements applied:
 - Cleaned up SQL and dictionary handling
 - Preliminary support for rename events
 - Added symlink support and index optimizations
+- exists is properly escaped with double quotes to avoid the SQLite keyword conflict.
 """
 
 import sqlite3
@@ -106,12 +108,11 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
                     child['blob'] = None
                     child['symlink_target'] = None
 
-    # Persist reduced state
+    # Persist reduced state, escape 'exists' in SQL to avoid keyword conflict
     for path, st in path_state.items():
         cur.execute(
-            """INSERT OR REPLACE INTO reduced_paths
-               (path, exists, blob, ctime, mtime, old_path, symlink_target)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            'INSERT OR REPLACE INTO reduced_paths (path, "exists", blob, ctime, mtime, old_path, symlink_target) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
             (path, st['exists'], st['blob'], st['ctime'], st['mtime'], st.get('old_path'), st.get('symlink_target'))
         )
         if verbose and st['exists']:
