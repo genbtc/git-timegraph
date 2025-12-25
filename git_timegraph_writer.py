@@ -20,7 +20,7 @@ def materialize_files(db, output_dir, repo_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     query = """
-        SELECT path, exists, blob, mtime
+        SELECT path, "exists", blob, mtime
         FROM reduced_paths
     """
 

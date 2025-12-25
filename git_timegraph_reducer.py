@@ -26,7 +26,7 @@ def reduce_paths(db):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS reduced_paths (
             path TEXT PRIMARY KEY,
-            exists INTEGER NOT NULL,
+            "exists" INTEGER NOT NULL,
             blob TEXT,
             ctime INTEGER NOT NULL,
             mtime INTEGER NOT NULL
