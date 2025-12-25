@@ -1,3 +1,6 @@
+# THIS PROJECTS OWN SQLITE DATABASE
+timegraph.sqlite
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
