@@ -117,7 +117,11 @@ def main():
     materialize_files(db, OUTPUT_DIR, repo_dir, policy=CONFLICT_POLICY)
     db.close()
 
-    print(f"Files materialized in {OUTPUT_DIR}")
+    # Ensure trailing slash
+    out_dir_str = str(OUTPUT_DIR)
+    if not out_dir_str.endswith(os.sep):
+        out_dir_str += os.sep
+    print(f"Files materialized in {out_dir_str}")
 
 
 if __name__ == "__main__":
