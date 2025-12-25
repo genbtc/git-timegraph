@@ -12,31 +12,53 @@ DB_PATH = BASE_DIR / "timegraph.sqlite"
 
 
 def compute_timestamps(db):
-    # Dictionary to hold per-path timestamps
-    path_times = {}
+    """
+    Compute final per-path state from path_events.
+    ctime = first introduction
+    mtime = last semantic change
+    If last change_type is 'D', the path does not exist.
+    """
+    path_state = {}
 
-    # Query path_events in commit_time order
     query = """
-        SELECT p.path, c.committer_time
+        SELECT p.path,
+               pe.change_type,
+               c.committer_time
         FROM path_events pe
         JOIN paths p ON p.id = pe.path_id
         JOIN commits c ON c.oid = pe.commit_oid
-        ORDER BY c.committer_time, p.path
+        ORDER BY p.path, c.committer_time
     """
 
-    for path, commit_time in db.execute(query):
-        if path not in path_times:
-            # First introduction: ctime = mtime = first commit_time
-            path_times[path] = {'ctime': commit_time, 'mtime': commit_time}
-        else:
-            # Update mtime if commit_time is newer
-            if commit_time >= path_times[path]['mtime']:
-                path_times[path]['mtime'] = commit_time
+    for path, change_type, commit_time in db.execute(query):
+        if path not in path_state:
+            # First time we see this path
+            if change_type == 'D':
+                # Deleted before ever materialized: record non-existence
+                path_state[path] = {
+                    'exists': False,
+                    'ctime': commit_time,
+                    'mtime': commit_time,
+                }
             else:
-                # Regression, ignore as per spec
+                path_state[path] = {
+                    'exists': True,
+                    'ctime': commit_time,
+                    'mtime': commit_time,
+                }
+        else:
+            # Subsequent events
+            if commit_time >= path_state[path]['mtime']:
+                path_state[path]['mtime'] = commit_time
+                if change_type == 'D':
+                    path_state[path]['exists'] = False
+                else:
+                    path_state[path]['exists'] = True
+            else:
+                # Time regression: ignore per spec
                 pass
 
-    return path_times
+    return path_state
 
 
 def main():
