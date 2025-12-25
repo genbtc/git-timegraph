@@ -12,6 +12,9 @@ BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = BASE_DIR / "timegraph.sqlite"
 OUTPUT_DIR = BASE_DIR / "checkout"
 
+# Track directories created/logged during dry-run
+_dry_run_created_dirs = set()
+
 
 def delete_path(target_path: Path, dry_run: bool = False, verbose: bool = False) -> None:
     """Recursively delete file or directory."""
@@ -41,6 +44,10 @@ def ensure_parents(target_path: Path, output_dir: Path, dry_run: bool = False, v
             if not dry_run:
                 delete_path(ancestor, dry_run=dry_run, verbose=verbose)
         if not ancestor.exists():
+            if dry_run:
+                if ancestor in _dry_run_created_dirs:
+                    continue
+                _dry_run_created_dirs.add(ancestor)
             if verbose:
                 print(f"Creating directory {ancestor}")
             if not dry_run:
@@ -48,7 +55,8 @@ def ensure_parents(target_path: Path, output_dir: Path, dry_run: bool = False, v
 
 
 def materialize_files(db, output_dir: Path, repo_dir: Path, dry_run: bool = False, verbose: bool = False) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     query = """
         SELECT path, "exists", blob, mtime
