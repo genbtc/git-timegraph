@@ -37,7 +37,15 @@ def materialize_files(db, output_dir, repo_dir):
             continue
 
         # materialize file
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+        parent = target_path.parent
+
+        # Handle file/dir conflict on parent path
+        if parent.exists() and parent.is_file():
+            # A file exists where a directory is required
+            # Destructive replace (policy D): remove file
+            parent.unlink()
+
+        parent.mkdir(parents=True, exist_ok=True)
 
         content = subprocess.check_output(
             ['git', 'cat-file', '-p', blob],
