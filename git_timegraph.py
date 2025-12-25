@@ -6,22 +6,27 @@ import subprocess
 import sqlite3
 import sys
 from pathlib import Path
+from typing import List, Tuple, Optional
 
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = BASE_DIR / "timegraph.sqlite"
 PLUMBING = BASE_DIR / "git_plumbing.sh"
 
 
-def sh(cmd, cwd=None):
-    return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.PIPE, cwd=cwd)
+def sh(cmd: str, cwd: Optional[Path] = None) -> str:
+    try:
+        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.PIPE, cwd=cwd)
+    except subprocess.CalledProcessError as e:
+        print(f"Error running command: {cmd}\n{e.stderr}")
+        sys.exit(1)
 
 
-def init_db(db):
+def init_db(db: sqlite3.Connection) -> None:
     with open(BASE_DIR / "schema.sql") as f:
         db.executescript(f.read())
 
 
-def get_or_create_path(db, path):
+def get_or_create_path(db: sqlite3.Connection, path: str) -> int:
     cur = db.execute("SELECT id FROM paths WHERE path = ?", (path,))
     row = cur.fetchone()
     if row:
@@ -30,7 +35,8 @@ def get_or_create_path(db, path):
     return cur.lastrowid
 
 
-def parse_commit(meta):
+def parse_commit(meta: str) -> Tuple[List[str], int, int, str, str]:
+    """Parse raw git commit metadata into structured components."""
     parents = []
     author_time = None
     committer_time = None
@@ -56,7 +62,8 @@ def parse_commit(meta):
     return parents, author_time, committer_time, tree, "\n".join(message)
 
 
-def index_commits(db, repo_dir, ref):
+def index_commits(db: sqlite3.Connection, repo_dir: Path, ref: str) -> List[str]:
+    """Index commits into the database from a given ref."""
     commits = sh(f"{PLUMBING} git_commits {ref}", cwd=repo_dir).splitlines()
 
     for oid in commits:
@@ -76,7 +83,8 @@ def index_commits(db, repo_dir, ref):
     return commits
 
 
-def index_diffs(db, repo_dir, commits):
+def index_diffs(db: sqlite3.Connection, repo_dir: Path, commits: List[str]) -> None:
+    """Index file tree diffs for each commit into path_events."""
     for oid in commits:
         cur = db.execute("SELECT parent_oids, committer_time FROM commits WHERE oid = ?", (oid,)).fetchone()
         parents = cur[0].split()
