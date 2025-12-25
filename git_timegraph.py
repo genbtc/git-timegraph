@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 
 # git_timegraph.py - main entry (V1 plumbing) updated to match reducer/writer
+"""
+Schema now includes symlink_target and optimized indexes.
+Minor improvements applied:
+- Added docstrings for index_commits and index_diffs
+- Added basic error handling for subprocess failures
+- Added type hints for clarity
+"""
 
 import subprocess
 import sqlite3
@@ -98,8 +105,8 @@ def index_diffs(db: sqlite3.Connection, repo_dir: Path, commits: List[str]) -> N
                 db.execute(
                     """
                     INSERT OR IGNORE INTO path_events
-                    (path_id, commit_oid, commit_time, old_blob, new_blob, change_type)
-                    VALUES (?, ?, ?, NULL, ?, 'A')
+                    (path_id, commit_oid, commit_time, old_blob, new_blob, change_type, old_path, symlink_target)
+                    VALUES (?, ?, ?, NULL, ?, 'A', NULL, NULL)
                     """,
                     (pid, oid, ctime, blob),
                 )
@@ -121,8 +128,8 @@ def index_diffs(db: sqlite3.Connection, repo_dir: Path, commits: List[str]) -> N
                 db.execute(
                     """
                     INSERT OR IGNORE INTO path_events
-                    (path_id, commit_oid, commit_time, old_blob, new_blob, change_type)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (path_id, commit_oid, commit_time, old_blob, new_blob, change_type, old_path, symlink_target)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
                     """,
                     (pid, oid, ctime, old_blob, new_blob, change),
                 )

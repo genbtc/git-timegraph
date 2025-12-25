@@ -3,13 +3,16 @@
 # git_timegraph_writer.py - Materialize files from reduced_paths into checkout
 """
 Refactored to use shared utilities from git_timegraph_utils.
+Enhanced for symlink support.
 """
-from git_timegraph_utils import delete_path, ensure_parents, handle_rename
 
 import sqlite3
 import subprocess
+import os
 from pathlib import Path
 import sys
+
+from git_timegraph_utils import delete_path, ensure_parents, handle_rename
 
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = BASE_DIR / "timegraph.sqlite"
@@ -20,11 +23,11 @@ def materialize_files(db, output_dir: Path, repo_dir: Path, dry_run: bool = Fals
         output_dir.mkdir(parents=True, exist_ok=True)
 
     query = """
-        SELECT path, "exists", blob, mtime, old_path
+        SELECT path, "exists", blob, mtime, old_path, symlink_target
         FROM reduced_paths
     """
 
-    for path, exists, blob, mtime, old_path in db.execute(query):
+    for path, exists, blob, mtime, old_path, symlink_target in db.execute(query):
         target_path = output_dir / path
 
         # Handle rename using shared utility
@@ -44,9 +47,16 @@ def materialize_files(db, output_dir: Path, repo_dir: Path, dry_run: bool = Fals
             print(f"Materializing {target_path} (mtime={mtime})")
 
         if not dry_run:
-            content = subprocess.check_output(['git', 'cat-file', '-p', blob], cwd=repo_dir)
-            with open(target_path, 'wb') as f:
-                f.write(content)
+            if symlink_target:
+                # Create symlink
+                if target_path.exists() or target_path.is_symlink():
+                    delete_path(target_path, dry_run=dry_run, verbose=verbose)
+                os.symlink(symlink_target, target_path)
+            else:
+                # Regular file
+                content = subprocess.check_output(['git', 'cat-file', '-p', blob], cwd=repo_dir)
+                with open(target_path, 'wb') as f:
+                    f.write(content)
             os.utime(target_path, times=(mtime, mtime))
 
 def main():
@@ -68,7 +78,7 @@ def main():
     db.close()
 
     out = str(OUTPUT_DIR)
-    if not out.endswith('/'):  # Use forward slash for consistency
+    if not out.endswith('/'):
         out += '/'
     print(f"Files materialized in {out}")
 
