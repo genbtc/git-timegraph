@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 
-# git_timegraph.py - main entry (V1 plumbing)
-# Usage updated to allow directory input instead of just <ref>
+# git_timegraph.py - main entry (V1 plumbing) v0.2
 
 import subprocess
 import sqlite3
+
 import sys
 from pathlib import Path
 
-DB_PATH = "timegraph.sqlite"
-PLUMBING = "./git_plumbing.sh"
-
+# Use absolute paths relative to this script for robustness
+BASE_DIR = Path(__file__).parent.resolve()
+DB_PATH = str(BASE_DIR / "timegraph.sqlite")
+PLUMBING = str(BASE_DIR / "git_plumbing.sh")
 
 def sh(cmd, cwd=None):
     return subprocess.check_output(
-        cmd, shell=True, text=True, stderr=subprocess.PIPE, cwd=cwd
-    )
-
-
+    cmd, shell=True, text=True, stderr=subprocess.PIPE, cwd=cwd
+)
 def init_db(db):
-    with open("schema.sql") as f:
+    with open(BASE_DIR / "schema.sql") as f:
         db.executescript(f.read())
-
 
 def get_or_create_path(db, path):
     cur = db.execute("SELECT id FROM paths WHERE path = ?", (path,))
@@ -133,11 +131,11 @@ def index_diffs(db, repo_dir, commits):
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] != "index":
-        print("usage: git-timegraph index <repo_dir>")
+    if len(sys.argv) != 2:
+        print("usage: git-timegraph <repo_dir>")
         sys.exit(1)
 
-    repo_dir = Path(sys.argv[2])
+    repo_dir = Path(sys.argv[1])
     if not repo_dir.is_dir():
         print(f"Error: {repo_dir} is not a directory")
         sys.exit(1)
@@ -145,7 +143,6 @@ def main():
     db = sqlite3.connect(DB_PATH)
     init_db(db)
 
-    # Default ref is HEAD if not specified
     ref = "HEAD"
 
     commits = index_commits(db, repo_dir, ref)
