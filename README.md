@@ -30,14 +30,26 @@ git-timegraph/
 
 #### Project Directory Structure (v0): 
 ```
-   4790 Dec 25 12:49 .gitignore
-  34523 Dec 25 12:04 LICENSE
-    992 Dec 25 12:52 README.md
-    313 Dec 25 12:06 git_plumbing.sh
-   4616 Dec 25 12:08 git_timegraph.py
-   1409 Dec 25 12:23 git_timegraph_reducer.py
-   3739 Dec 25 12:46 git_timegraph_writer.py
-    458 Dec 25 12:06 print_sqlite.py
-    776 Dec 25 12:05 schema.sql
- 872448 Dec 25 12:10 timegraph.sqlite
+    4790 Dec 25 12:49 .gitignore
+   34523 Dec 25 12:04 LICENSE
+    1950 Dec 25 17:37 README.md
+     313 Dec 25 12:06 git_plumbing.sh
+    4405 Dec 25 17:23 git_timegraph.py
+    3462 Dec 25 17:20 git_timegraph_reducer.py
+    2312 Dec 25 17:18 git_timegraph_writer.py
+     458 Dec 25 12:06 print_sqlite.py
+     776 Dec 25 12:05 schema.sql
+ 1273856 Dec 25 17:24 timegraph.sqlite
 ```
+
+#### Architectural Design
+
+The core pipeline is solid, deterministic, and fully functional:
+
+Indexer (git_timegraph.py) → commits, paths, path_events
+
+Reducer (git_timegraph_reducer.py) → reduced_paths, handles A/M/D, recursive deletion
+
+Writer (git_timegraph_writer.py) → filesystem, handles parent/ancestor conflicts, deletions, timestamps
+
+Schema (schema.sql) → authoritative table definitions
