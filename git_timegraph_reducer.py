@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-# git-timegraph Reducer
-# Computes final per-path state from path_events and persists it
-# Authoritative semantic stage (ctime/mtime/existence/blob)
-# Now supports recursive deletion of children for directories
+
+# git_timegraph_reducer.py - Computes final per-path state from path_events
 
 import sqlite3
 from pathlib import Path
+from typing import Dict, Any
 
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = BASE_DIR / "timegraph.sqlite"
 
 
-def reduce_paths(db):
+def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dict[str, Any]]:
     """
     Reduce path_events into final per-path state.
     Rules:
@@ -23,21 +22,10 @@ def reduce_paths(db):
     """
     cur = db.cursor()
 
-    # Ensure output table exists
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS reduced_paths (
-            path TEXT PRIMARY KEY,
-            "exists" INTEGER NOT NULL,
-            blob TEXT,
-            ctime INTEGER NOT NULL,
-            mtime INTEGER NOT NULL
-        )
-    """)
-
     # Clear previous reduction
     cur.execute("DELETE FROM reduced_paths")
 
-    query = """
+    query = '''
         SELECT p.path,
                pe.change_type,
                pe.new_blob,
@@ -46,47 +34,40 @@ def reduce_paths(db):
         JOIN paths p ON p.id = pe.path_id
         JOIN commits c ON c.oid = pe.commit_oid
         ORDER BY p.path, c.committer_time
-    """
+    '''
 
-    path_state = {}
+    path_state: Dict[str, Dict[str, Any]] = {}
 
     for path, change_type, blob, commit_time in cur.execute(query):
-        if path not in path_state:
-            if change_type == 'D':
-                path_state[path] = {
-                    'exists': 0,
-                    'blob': None,
-                    'ctime': commit_time,
-                    'mtime': commit_time,
-                }
-            else:
-                path_state[path] = {
-                    'exists': 1,
-                    'blob': blob,
-                    'ctime': commit_time,
-                    'mtime': commit_time,
-                }
+        state = path_state.get(path)
+        if state is None:
+            path_state[path] = {
+                'exists': 0 if change_type == 'D' else 1,
+                'blob': None if change_type == 'D' else blob,
+                'ctime': commit_time,
+                'mtime': commit_time,
+            }
         else:
-            if commit_time >= path_state[path]['mtime']:
-                path_state[path]['mtime'] = commit_time
+            if commit_time >= state['mtime']:
+                state['mtime'] = commit_time
                 if change_type == 'D':
-                    path_state[path]['exists'] = 0
-                    path_state[path]['blob'] = None
+                    state['exists'] = 0
+                    state['blob'] = None
                 else:
-                    path_state[path]['exists'] = 1
-                    path_state[path]['blob'] = blob
+                    state['exists'] = 1
+                    state['blob'] = blob
 
-    # Handle recursive deletions: if a directory is deleted, mark all children as deleted
+    # Recursive deletions for directories
     sorted_paths = sorted(path_state.keys())
     for path in sorted_paths:
         st = path_state[path]
         if st['exists'] == 0:
-            # find children
             prefix = path + '/'
             for child_path in sorted_paths:
                 if child_path.startswith(prefix):
-                    path_state[child_path]['exists'] = 0
-                    path_state[child_path]['blob'] = None
+                    child = path_state[child_path]
+                    child['exists'] = 0
+                    child['blob'] = None
 
     # Persist reduced state
     for path, st in path_state.items():
@@ -94,19 +75,24 @@ def reduce_paths(db):
             "INSERT OR REPLACE INTO reduced_paths VALUES (?, ?, ?, ?, ?)",
             (path, st['exists'], st['blob'], st['ctime'], st['mtime'])
         )
+        if verbose and st['exists']:
+            print(f"{path}: ctime={st['ctime']}, mtime={st['mtime']}")
+        elif verbose:
+            print(f"{path}: DELETED at {st['mtime']}")
 
     db.commit()
     return path_state
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Reduce Git Timegraph path events into final state")
+    parser.add_argument('--verbose', action='store_true', help='Print detailed reduction info')
+    args = parser.parse_args()
+
     db = sqlite3.connect(DB_PATH)
-    reduced = reduce_paths(db)
-    for path, st in reduced.items():
-        if st['exists']:
-            print(f"{path}: ctime={st['ctime']}, mtime={st['mtime']}")
-        else:
-            print(f"{path}: DELETED at {st['mtime']}")
+    reduce_paths(db, verbose=args.verbose)
     db.close()
 
 
