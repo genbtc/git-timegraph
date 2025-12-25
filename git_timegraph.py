@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# git_timegraph.py - main entry (V1 plumbing)
+# Usage updated to allow directory input instead of just <ref>
+
 import subprocess
 import sqlite3
 import sys
@@ -9,9 +12,9 @@ DB_PATH = "timegraph.sqlite"
 PLUMBING = "./git_plumbing.sh"
 
 
-def sh(cmd):
+def sh(cmd, cwd=None):
     return subprocess.check_output(
-        cmd, shell=True, text=True, stderr=subprocess.PIPE
+        cmd, shell=True, text=True, stderr=subprocess.PIPE, cwd=cwd
     )
 
 
@@ -56,11 +59,11 @@ def parse_commit(meta):
     return parents, author_time, committer_time, tree, "\n".join(message)
 
 
-def index_commits(db, ref):
-    commits = sh(f"{PLUMBING} git_commits {ref}").splitlines()
+def index_commits(db, repo_dir, ref):
+    commits = sh(f"{PLUMBING} git_commits {ref}", cwd=repo_dir).splitlines()
 
     for oid in commits:
-        meta = sh(f"{PLUMBING} git_commit_meta {oid}")
+        meta = sh(f"{PLUMBING} git_commit_meta {oid}", cwd=repo_dir)
         parents, atime, ctime, tree, msg = parse_commit(meta)
 
         db.execute(
@@ -76,9 +79,7 @@ def index_commits(db, ref):
     return commits
 
 
-def index_diffs(db, commits):
-    prev = {}
-
+def index_diffs(db, repo_dir, commits):
     for oid in commits:
         cur = db.execute(
             "SELECT parent_oids, committer_time FROM commits WHERE oid = ?",
@@ -89,7 +90,7 @@ def index_diffs(db, commits):
 
         if not parents:
             # root commit
-            out = sh(f"{PLUMBING} git_root_tree {oid}")
+            out = sh(f"{PLUMBING} git_root_tree {oid}", cwd=repo_dir)
             for line in out.splitlines():
                 _, _, blob, path = line.split(maxsplit=3)
                 pid = get_or_create_path(db, path)
@@ -104,7 +105,7 @@ def index_diffs(db, commits):
             continue
 
         for parent in parents:
-            diff = sh(f"{PLUMBING} git_diff_tree {parent} {oid}")
+            diff = sh(f"{PLUMBING} git_diff_tree {parent} {oid}", cwd=repo_dir)
             for line in diff.splitlines():
                 if not line.startswith(":"):
                     continue
@@ -133,19 +134,25 @@ def index_diffs(db, commits):
 
 def main():
     if len(sys.argv) != 3 or sys.argv[1] != "index":
-        print("usage: git-timegraph index <ref>")
+        print("usage: git-timegraph index <repo_dir>")
         sys.exit(1)
 
-    ref = sys.argv[2]
+    repo_dir = Path(sys.argv[2])
+    if not repo_dir.is_dir():
+        print(f"Error: {repo_dir} is not a directory")
+        sys.exit(1)
 
     db = sqlite3.connect(DB_PATH)
     init_db(db)
 
-    commits = index_commits(db, ref)
-    index_diffs(db, commits)
+    # Default ref is HEAD if not specified
+    ref = "HEAD"
+
+    commits = index_commits(db, repo_dir, ref)
+    index_diffs(db, repo_dir, commits)
 
     db.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES ('ref', ?)", (ref,)
+        "INSERT OR REPLACE INTO meta(key, value) VALUES ('ref', ?)" , (ref,)
     )
     db.commit()
     db.close()
@@ -155,3 +162,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
