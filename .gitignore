@@ -1,5 +1,7 @@
 # THIS PROJECTS OWN SQLITE DATABASE
 timegraph.sqlite
+# THIS PROJECTS OWN CHECKOUT DIRECTORY
+checkout
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
