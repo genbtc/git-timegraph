@@ -51,5 +51,17 @@ Indexer (git_timegraph.py) → commits, paths, path_events
 Reducer (git_timegraph_reducer.py) → reduced_paths, handles A/M/D, recursive deletion
 
 Writer (git_timegraph_writer.py) → filesystem, handles parent/ancestor conflicts, deletions, timestamps
+```
+Materializing /home/genr8eofl/src/git-timegraph/checkout/selinux/useradd.te (mtime=1761525148)
+Creating directory /home/genr8eofl/src/git-timegraph/checkout/selinux
+Materializing /home/genr8eofl/src/git-timegraph/checkout/selinux/xevent3.te (mtime=1761525148)
+Materializing /home/genr8eofl/src/git-timegraph/checkout/selinux/xfce4-interfaces.if (mtime=1761525148)
+Creating directory /home/genr8eofl/src/git-timegraph/checkout/shstk
+Materializing /home/genr8eofl/src/git-timegraph/checkout/shstk/shstk-txt-clang14-none-objdump-d.txt (mtime=1702750177)
+Materializing /home/genr8eofl/src/git-timegraph/checkout/shstk/shstk.c (mtime=1702750177)
+Materializing /home/genr8eofl/src/git-timegraph/checkout/welcome-to-gentoo.txt (mtime=1696206400)
+Files materialized in /home/genr8eofl/src/git-timegraph/checkout/
+```
 
 Schema (schema.sql) → authoritative table definitions
+```CREATE table blah```
