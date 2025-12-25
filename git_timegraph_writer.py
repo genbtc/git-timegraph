@@ -11,11 +11,22 @@ DB_PATH = BASE_DIR / "timegraph.sqlite"
 OUTPUT_DIR = BASE_DIR / "checkout"
 
 
+def delete_path(target_path):
+    """Recursively delete file or directory."""
+    if target_path.is_dir():
+        for child in target_path.iterdir():
+            delete_path(child)
+        target_path.rmdir()
+    elif target_path.exists():
+        target_path.unlink()
+
+
 def materialize_files(db, output_dir, repo_dir):
     """
     Writer phase.
     Consumes reduced_paths produced by the reducer.
-    No history walking, no semantic decisions.
+    Deletes paths marked as non-existent.
+    Handles file/dir conflicts on all ancestors.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -28,25 +39,24 @@ def materialize_files(db, output_dir, repo_dir):
         target_path = output_dir / path
 
         if not exists:
-            # deletion: remove if present
+            # deletion: remove path recursively if present
             if target_path.exists():
-                if target_path.is_dir():
-                    os.rmdir(target_path)
-                else:
-                    target_path.unlink()
+                delete_path(target_path)
             continue
 
-        # materialize file
+        # ensure all parent directories exist
         parent = target_path.parent
+        ancestors = []
+        while parent != output_dir.parent:
+            ancestors.append(parent)
+            parent = parent.parent
+        for ancestor in reversed(ancestors):
+            if ancestor.exists() and ancestor.is_file():
+                # A file exists where a directory is required
+                delete_path(ancestor)
+            ancestor.mkdir(exist_ok=True)
 
-        # Handle file/dir conflict on parent path
-        if parent.exists() and parent.is_file():
-            # A file exists where a directory is required
-            # Destructive replace (policy D): remove file
-            parent.unlink()
-
-        parent.mkdir(parents=True, exist_ok=True)
-
+        # materialize file
         content = subprocess.check_output(
             ['git', 'cat-file', '-p', blob],
             cwd=repo_dir

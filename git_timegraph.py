@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 
-# git_timegraph.py - main entry (V1 plumbing) v0.2
+# git_timegraph.py - main entry (V1 plumbing) updated to match reducer/writer
 
 import subprocess
 import sqlite3
-
 import sys
 from pathlib import Path
 
-# Use absolute paths relative to this script for robustness
 BASE_DIR = Path(__file__).parent.resolve()
-DB_PATH = str(BASE_DIR / "timegraph.sqlite")
-PLUMBING = str(BASE_DIR / "git_plumbing.sh")
+DB_PATH = BASE_DIR / "timegraph.sqlite"
+PLUMBING = BASE_DIR / "git_plumbing.sh"
+
 
 def sh(cmd, cwd=None):
-    return subprocess.check_output(
-    cmd, shell=True, text=True, stderr=subprocess.PIPE, cwd=cwd
-)
+    return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.PIPE, cwd=cwd)
+
+
 def init_db(db):
     with open(BASE_DIR / "schema.sql") as f:
         db.executescript(f.read())
+
 
 def get_or_create_path(db, path):
     cur = db.execute("SELECT id FROM paths WHERE path = ?", (path,))
@@ -38,7 +38,6 @@ def parse_commit(meta):
     message = []
 
     in_message = False
-
     for line in meta.splitlines():
         if in_message:
             message.append(line)
@@ -79,15 +78,11 @@ def index_commits(db, repo_dir, ref):
 
 def index_diffs(db, repo_dir, commits):
     for oid in commits:
-        cur = db.execute(
-            "SELECT parent_oids, committer_time FROM commits WHERE oid = ?",
-            (oid,),
-        ).fetchone()
+        cur = db.execute("SELECT parent_oids, committer_time FROM commits WHERE oid = ?", (oid,)).fetchone()
         parents = cur[0].split()
         ctime = cur[1]
 
         if not parents:
-            # root commit
             out = sh(f"{PLUMBING} git_root_tree {oid}", cwd=repo_dir)
             for line in out.splitlines():
                 _, _, blob, path = line.split(maxsplit=3)
@@ -113,9 +108,6 @@ def index_diffs(db, repo_dir, commits):
                 new_blob = parts[3]
                 change = parts[4]
 
-                if change == "D":
-                    continue  # deletes ignored for timestamps
-
                 pid = get_or_create_path(db, path)
 
                 db.execute(
@@ -135,7 +127,7 @@ def main():
         print("usage: git-timegraph <repo_dir>")
         sys.exit(1)
 
-    repo_dir = Path(sys.argv[1])
+    repo_dir = Path(sys.argv[1]).resolve()
     if not repo_dir.is_dir():
         print(f"Error: {repo_dir} is not a directory")
         sys.exit(1)
@@ -144,13 +136,10 @@ def main():
     init_db(db)
 
     ref = "HEAD"
-
     commits = index_commits(db, repo_dir, ref)
     index_diffs(db, repo_dir, commits)
 
-    db.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES ('ref', ?)" , (ref,)
-    )
+    db.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('ref', ?)" , (ref,))
     db.commit()
     db.close()
 

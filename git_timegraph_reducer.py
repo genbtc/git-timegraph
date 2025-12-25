@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-
 # git-timegraph Reducer
 # Computes final per-path state from path_events and persists it
 # Authoritative semantic stage (ctime/mtime/existence/blob)
+# Now supports recursive deletion of children for directories
 
 import sqlite3
 from pathlib import Path
@@ -19,6 +19,7 @@ def reduce_paths(db):
       - mtime = last semantic change (committer time)
       - last event wins
       - change_type == 'D' => path does not exist
+      - deletions are recursive for directories
     """
     cur = db.cursor()
 
@@ -51,7 +52,6 @@ def reduce_paths(db):
 
     for path, change_type, blob, commit_time in cur.execute(query):
         if path not in path_state:
-            # First time this path appears
             if change_type == 'D':
                 path_state[path] = {
                     'exists': 0,
@@ -67,7 +67,6 @@ def reduce_paths(db):
                     'mtime': commit_time,
                 }
         else:
-            # Subsequent events; last event wins
             if commit_time >= path_state[path]['mtime']:
                 path_state[path]['mtime'] = commit_time
                 if change_type == 'D':
@@ -76,9 +75,18 @@ def reduce_paths(db):
                 else:
                     path_state[path]['exists'] = 1
                     path_state[path]['blob'] = blob
-            else:
-                # Time regression: ignore per spec
-                pass
+
+    # Handle recursive deletions: if a directory is deleted, mark all children as deleted
+    sorted_paths = sorted(path_state.keys())
+    for path in sorted_paths:
+        st = path_state[path]
+        if st['exists'] == 0:
+            # find children
+            prefix = path + '/'
+            for child_path in sorted_paths:
+                if child_path.startswith(prefix):
+                    path_state[child_path]['exists'] = 0
+                    path_state[child_path]['blob'] = None
 
     # Persist reduced state
     for path, st in path_state.items():
@@ -88,22 +96,17 @@ def reduce_paths(db):
         )
 
     db.commit()
-
     return path_state
 
 
 def main():
     db = sqlite3.connect(DB_PATH)
-
     reduced = reduce_paths(db)
-
-    # Optional inspection output
     for path, st in reduced.items():
         if st['exists']:
             print(f"{path}: ctime={st['ctime']}, mtime={st['mtime']}")
         else:
             print(f"{path}: DELETED at {st['mtime']}")
-
     db.close()
 
 
