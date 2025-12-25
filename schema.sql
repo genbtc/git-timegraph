@@ -26,6 +26,14 @@ CREATE TABLE IF NOT EXISTS path_events (
     PRIMARY KEY (path_id, commit_oid)
 );
 
+CREATE TABLE IF NOT EXISTS reduced_paths (
+    path TEXT PRIMARY KEY,
+    "exists" INTEGER NOT NULL,
+    blob TEXT,
+    ctime INTEGER NOT NULL,
+    mtime INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
