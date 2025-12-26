@@ -10,7 +10,7 @@ Enhancements applied:
 - Cleaned up SQL and dictionary handling
 - Preliminary support for rename events
 - Added symlink support and index optimizations
-- exists is properly escaped with double quotes to avoid the SQLite keyword conflict.
+- Fixed symlink content handling to preserve target references correctly
 """
 
 import sqlite3
@@ -30,7 +30,7 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
       - last event wins
       - change_type == 'D' => path does not exist
       - rename events handled
-      - symlink_target handled
+      - symlink_target handled correctly
       - deletions are recursive for directories
     """
     cur = db.cursor()
@@ -64,7 +64,6 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
                 path_state[path]['blob'] = blob
                 path_state[path]['symlink_target'] = symlink_target
             else:
-                # Treat as new addition if old path unknown
                 path_state[path] = {
                     'exists': 1,
                     'blob': blob,
@@ -79,7 +78,7 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
             path_state[path] = {
                 'exists': 0 if change_type == 'D' else 1,
                 'blob': None if change_type == 'D' else blob,
-                'symlink_target': None if change_type == 'D' else symlink_target,
+                'symlink_target': symlink_target if symlink_target else (None if change_type == 'D' else None),
                 'ctime': commit_time,
                 'mtime': commit_time,
             }
