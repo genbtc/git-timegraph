@@ -9,8 +9,8 @@ Enhancements applied:
 - Added verbose print optionality
 - Cleaned up SQL and dictionary handling
 - Preliminary support for rename events
-- Added symlink support and index optimizations
-- Fixed symlink content handling to preserve target references correctly
+- Added proper symlink handling (symlinks no longer treated as files)
+- Index optimizations
 """
 
 import sqlite3
@@ -24,18 +24,10 @@ DB_PATH = BASE_DIR / "timegraph.sqlite"
 def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dict[str, Any]]:
     """
     Reduce path_events into final per-path state.
-    Rules:
-      - ctime = first introduction
-      - mtime = last semantic change (committer time)
-      - last event wins
-      - change_type == 'D' => path does not exist
-      - rename events handled
-      - symlink_target handled correctly
-      - deletions are recursive for directories
+    Symlinks are preserved as symlinks, blob content is only used for regular files.
     """
     cur = db.cursor()
 
-    # Clear previous reduction
     cur.execute("DELETE FROM reduced_paths")
 
     query = '''
@@ -61,12 +53,12 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
                 path_state[path] = old_state
                 path_state[path]['mtime'] = commit_time
                 path_state[path]['exists'] = 1
-                path_state[path]['blob'] = blob
+                path_state[path]['blob'] = blob if not symlink_target else None
                 path_state[path]['symlink_target'] = symlink_target
             else:
                 path_state[path] = {
                     'exists': 1,
-                    'blob': blob,
+                    'blob': blob if not symlink_target else None,
                     'symlink_target': symlink_target,
                     'ctime': commit_time,
                     'mtime': commit_time,
@@ -77,8 +69,8 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
         if state is None:
             path_state[path] = {
                 'exists': 0 if change_type == 'D' else 1,
-                'blob': None if change_type == 'D' else blob,
-                'symlink_target': symlink_target if symlink_target else (None if change_type == 'D' else None),
+                'blob': None if change_type == 'D' or symlink_target else blob,
+                'symlink_target': symlink_target,
                 'ctime': commit_time,
                 'mtime': commit_time,
             }
@@ -91,7 +83,7 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
                     state['symlink_target'] = None
                 else:
                     state['exists'] = 1
-                    state['blob'] = blob
+                    state['blob'] = blob if not symlink_target else None
                     state['symlink_target'] = symlink_target
 
     # Recursive deletions for directories
@@ -107,7 +99,7 @@ def reduce_paths(db: sqlite3.Connection, verbose: bool = False) -> Dict[str, Dic
                     child['blob'] = None
                     child['symlink_target'] = None
 
-    # Persist reduced state, escape 'exists' in SQL to avoid keyword conflict
+    # Persist reduced state
     for path, st in path_state.items():
         cur.execute(
             'INSERT OR REPLACE INTO reduced_paths (path, "exists", blob, ctime, mtime, old_path, symlink_target) '
