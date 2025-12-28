@@ -2,12 +2,8 @@
 
 # git_timegraph.py - main entry (V1 plumbing) updated to match reducer/writer
 """
-Now includes symlink detection using git object mode 120000 (Option 1).
-Minor improvements applied:
-- Added parsing of diff-tree mode to detect symlinks
-- Populates symlink_target in path_events
-- Blob is set to NULL for symlinks
-- Added type hints for clarity
+Now implements Option 1: symlink detection via git object mode 120000.
+Populates symlink_target in path_events; blob is NULL for symlinks.
 """
 
 import subprocess
@@ -89,22 +85,6 @@ def index_commits(db: sqlite3.Connection, repo_dir: Path, ref: str) -> List[str]
     return commits
 
 
-def decode_object(repo_dir: Path, blob_oid: str) -> Tuple[Optional[str], Optional[str]]:
-    """Return (blob_oid, None) for regular file or (None, symlink_target) for symlink."""
-    if blob_oid == "0000000000000000000000000000000000000000":
-        return None, None
-
-    # Use git cat-file -p to get content; check mode via diff-tree
-    content = sh(f"git cat-file -p {blob_oid}", cwd=repo_dir)
-
-    # Check if this is a symlink: assume symlinks are small text and end with \n
-    # (Option 1 would be to parse diff-tree mode directly; this works with plumbing update)
-    if '\n' not in content or len(content) < 200:
-        return None, content.strip()
-
-    return blob_oid, None
-
-
 def index_diffs(db: sqlite3.Connection, repo_dir: Path, commits: List[str]) -> None:
     for oid in commits:
         cur = db.execute("SELECT parent_oids, committer_time FROM commits WHERE oid = ?", (oid,)).fetchone()
@@ -114,17 +94,20 @@ def index_diffs(db: sqlite3.Connection, repo_dir: Path, commits: List[str]) -> N
         if not parents:
             out = sh(f"{PLUMBING} git_root_tree {oid}", cwd=repo_dir)
             for line in out.splitlines():
-                _, _, blob, path = line.split(maxsplit=3)
+                _, mode, blob, path = line.split(maxsplit=3)
                 pid = get_or_create_path(db, path)
-                # Detect symlink if blob content indicates
-                new_blob, symlink_target = decode_object(repo_dir, blob)
+                symlink_target = None
+                if mode == '120000':
+                    symlink_target = sh(f"git cat-file -p {blob}", cwd=repo_dir).strip()
+                    blob = None
+
                 db.execute(
                     """
                     INSERT OR IGNORE INTO path_events
                     (path_id, commit_oid, commit_time, old_blob, new_blob, change_type, old_path, symlink_target)
                     VALUES (?, ?, ?, NULL, ?, 'A', NULL, ?)
                     """,
-                    (pid, oid, ctime, new_blob, symlink_target),
+                    (pid, oid, ctime, blob, symlink_target),
                 )
             continue
 
@@ -137,10 +120,15 @@ def index_diffs(db: sqlite3.Connection, repo_dir: Path, commits: List[str]) -> N
                 parts = meta.split()
                 old_blob = parts[2]
                 raw_new_blob = parts[3]
+                new_mode = parts[1]
                 change = parts[4]
 
                 pid = get_or_create_path(db, path)
-                new_blob, symlink_target = decode_object(repo_dir, raw_new_blob)
+                symlink_target = None
+                blob = raw_new_blob
+                if new_mode == '120000':
+                    symlink_target = sh(f"git cat-file -p {raw_new_blob}", cwd=repo_dir).strip()
+                    blob = None
 
                 db.execute(
                     """
@@ -148,7 +136,7 @@ def index_diffs(db: sqlite3.Connection, repo_dir: Path, commits: List[str]) -> N
                     (path_id, commit_oid, commit_time, old_blob, new_blob, change_type, old_path, symlink_target)
                     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
                     """,
-                    (pid, oid, ctime, old_blob, new_blob, change, symlink_target),
+                    (pid, oid, ctime, old_blob, blob, change, symlink_target),
                 )
 
     db.commit()
