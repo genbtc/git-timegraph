@@ -2,8 +2,7 @@
 
 # git_timegraph_writer.py - Materialize files from reduced_paths into checkout
 """
-Refactored to use shared utilities from git_timegraph_utils.
-Enhanced for symlink support.
+Refactored for symlink support, correct utime handling, and verbose symlink printing.
 """
 
 import sqlite3
@@ -43,21 +42,29 @@ def materialize_files(db, output_dir: Path, repo_dir: Path, dry_run: bool = Fals
 
         ensure_parents(target_path, output_dir, dry_run=dry_run, verbose=verbose)
 
-        if verbose:
-            print(f"Materializing {target_path} (mtime={mtime})")
-
-        if not dry_run:
-            if symlink_target:
-                # Create symlink
+        if symlink_target:
+            if dry_run:
+                if verbose:
+                    print(f"{target_path} -> {symlink_target}")
+            else:
                 if target_path.exists() or target_path.is_symlink():
                     delete_path(target_path, dry_run=dry_run, verbose=verbose)
                 os.symlink(symlink_target, target_path)
+                if verbose:
+                    print(f"{target_path} -> {symlink_target}")
+        else:
+            if dry_run:
+                if verbose:
+                    print(f"Would write file {target_path}")
             else:
-                # Regular file
                 content = subprocess.check_output(['git', 'cat-file', '-p', blob], cwd=repo_dir)
                 with open(target_path, 'wb') as f:
                     f.write(content)
-            os.utime(target_path, times=(mtime, mtime))
+                os.utime(target_path, times=(mtime, mtime))
+
+        if verbose and not symlink_target:
+            print(f"Materializing {target_path} (mtime={mtime})")
+
 
 def main():
     import argparse
@@ -81,6 +88,7 @@ def main():
     if not out.endswith('/'):
         out += '/'
     print(f"Files materialized in {out}")
+
 
 if __name__ == "__main__":
     main()
